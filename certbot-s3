@@ -1,0 +1,101 @@
+#!/bin/bash
+
+set -e
+
+VERSION="0.1-alpha"
+LETSENCRYPT_PATH=/etc/letsencrypt
+
+function echo_err() {
+    echo $@ 1>&2
+}
+
+function echo_ver() {
+    [[ "$VERBOSE" != "" ]] && echo $@
+}
+
+function usage() {
+    echo_err "certbot-s3 $VERSION"
+    echo_err "Usage: certbot-s3 <certbot cli arguments>"
+    echo_err "Certbot with S3 as storage"
+    echo_err "Environment variables:"
+    echo_err " - S3_BUCKET: S3 bucket for certificates. Required"
+    echo_err " - S3_PATH: S3 path for certificates. Required"
+    echo_err " - RENEW_INTERVAL: Hours between renewals. If not defined, it will exit the execution. Optional"
+    echo_err " - VERBOSE: If set, it will print more stuff. Optional"
+    echo_err "CLI arguments: All arguments are described here https://certbot.eff.org/docs/using.html#certbot-command-line-options"
+    echo_err '`--non-interactive` is automatically applied if not provided.'
+    exit 1
+}
+
+function assert_certbot() {
+    which certbot > /dev/null
+    local notFound=$?
+
+    if [[ $notFound -eq 1 ]]; then {
+        echo_err "Certbot not found "
+        exit 1
+    } fi
+}
+
+function s3_sync {
+    echo_ver "Syncing S3 ($1 -> $2)"
+    aws s3 sync $1 $2
+}
+
+function run_certbot() {
+
+    s3_sync s3://$S3_BUCKET$S3_PATH $LETSENCRYPT_PATH
+
+    echo_ver "certbot $@"
+    certbot $@
+
+    s3_sync $LETSENCRYPT_PATH s3://$S3_BUCKET$S3_PATH
+}
+
+function main() {
+    assert_certbot
+
+    if [[ "$1" == "--help" ]]; then {
+        certbot --help
+        usage
+    } fi
+
+    [[ "$S3_BUCKET" == "" ]] && usage
+    [[ "$S3_PATH" == "" ]] && usage
+
+    mkdir -p $LETSENCRYPT_PATH
+
+    # Inspect arguments
+    local arguments="$@"
+    local nonInteractiveFound=0
+    for arg in $arguments; do {
+        if [[ "$arg" == "--non-interactive" ]]; then {
+            echo_ver "--non-interactive argument found"
+            nonInteractiveFound=1
+        } elif [[ "$arg" =~ "path" ]]; then {
+            echo_err "WARN: $arg might cause issues with the default certs path"
+        } fi
+    } done
+
+    if [[ $nonInteractiveFound -eq 0 ]]; then {
+        echo_ver "Adding --non-interactive flag"
+        arguments="$arguments --non-interactive"
+    } fi
+
+    if [[ "$1" == "certonly" ]] && [[ ! "--standalone --dns-route53" =~ "$2" ]]; then {
+        echo_err "ERROR: Only --standalone or --dns-route53 is supported"
+        exit 1
+    } fi
+
+    if [[ "$1" == "renew" ]] && [[ "$RENEW_INTERVAL" ]]; then {
+        while true; do {
+            run_certbot $arguments
+            echo_ver "Sleeping for $RENEW_INTERVAL hours"
+            sleep $(($RENEW_INTERVAL*60*60))
+        } done
+    } else {
+        run_certbot $arguments
+    } fi
+}
+
+main $@
