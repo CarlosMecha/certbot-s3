@@ -1,6 +1,6 @@
 # Certbot S3
 
-[Certbot](https://certbot.eff.org/) configured to run in a Docker image to create and renew certificates. Uses S3 as a store new certificates, and pulls from it for renewal. 
+[Certbot](https://certbot.eff.org/) configured to run in a Docker image to create and renew certificates. Uses S3 as a file store. 
 
 *IMPORTANT:* This is a work in progress project. Use at your own risk. If used in production, make a backup of the S3 folder *before* each run. 
 
@@ -28,7 +28,7 @@ override the local certificates when a file in S3 changes (or adding missing one
 0 * * * * aws sync s3://bucket/path-to-certs/ /etc/my-certs/
 ```
 
-Then, the script `check-certificates` that would run before your web server starts:
+Then, the script `start-webserver` that would start your server:
 
 ```bash
 #!/bin/bash
@@ -126,6 +126,144 @@ No renewals were attempted.
 **          (The test certificates above have not been saved.)
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Syncing S3 (/etc/letsencrypt -> s3://my-bucket/my-certs/)
+```
+
+## Certbot-s3 and aws-cli
+You can wrap `aws ecs run-task` in an script to make it a little bit more useful:
+```bash
+$ ./aws-certbot-s3 <certbot args>
+```
+
+Where `aws-certbot-s3` is:
+```bash
+#!/bin/bash
+
+if [[  "$@" =~ "--standalone" ]]; then {
+    exposePort='"portMappings": { "containerPort": 80, "hostPort": 80, "protocol": "tcp" },'
+} fi
+
+command="$(echo $@ | sed -e 's/\([a-zA-Z0-9_-]*\)/"\1",/g' -e 's/^\([a-zA-Z0-9_," -]*\),$/[ \1 ]/g')"
+tmp=/tmp/certbot-overrides.json
+
+cat << EOF > $tmp
+{
+  "containerOverrides": [
+    {
+      "name": "certbot",
+      $exposePort
+      "command": $command
+    }
+  ]
+}
+EOF
+
+aws ecs run-task --cluster cluster --task-definition certbot-s3 --overrides file:///tmp/certbot-overrides.json
+```
+
+And the corresponding task definition:
+```json
+{
+  "ipcMode": null,
+  "executionRoleArn": null,
+  "containerDefinitions": [
+    {
+      "dnsSearchDomains": null,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "certbot-logs",
+          "awslogs-region": "us-west-2"
+        }
+      },
+      "entryPoint": null,
+      "portMappings": [],
+      "command": null,
+      "linuxParameters": null,
+      "cpu": 64,
+      "environment": [
+        {
+          "name": "S3_BUCKET",
+          "value": "my-bucket"
+        },
+        {
+          "name": "S3_PATH",
+          "value": "my-certs/"
+        }
+      ],
+      "ulimits": null,
+      "dnsServers": null,
+      "mountPoints": [],
+      "workingDirectory": null,
+      "secrets": null,
+      "dockerSecurityOptions": null,
+      "memory": 128,
+      "memoryReservation": 64,
+      "volumesFrom": [],
+      "image": "ACCOUNT.dkr.ecr.us-west-2.amazonaws.com/certbot-s3:0.1",
+      "disableNetworking": null,
+      "interactive": null,
+      "healthCheck": null,
+      "essential": true,
+      "links": null,
+      "hostname": null,
+      "extraHosts": null,
+      "pseudoTerminal": null,
+      "user": null,
+      "readonlyRootFilesystem": null,
+      "dockerLabels": null,
+      "systemControls": null,
+      "privileged": false,
+      "name": "certbot"
+    }
+  ],
+  "placementConstraints": [],
+  "memory": null,
+  "taskRoleArn": "arn:aws:iam::ACCOUNT:role/certbot-task-role",
+  "compatibilities": [
+    "EC2"
+  ],
+  "taskDefinitionArn": "arn:aws:ecs:us-west-2:ACCOUNT:task-definition/certbot-s3:1",
+  "family": "certbot-s3",
+  "requiresAttributes": [
+    {
+      "targetId": null,
+      "targetType": null,
+      "value": null,
+      "name": "com.amazonaws.ecs.capability.ecr-auth"
+    },
+    {
+      "targetId": null,
+      "targetType": null,
+      "value": null,
+      "name": "com.amazonaws.ecs.capability.task-iam-role"
+    },
+    {
+      "targetId": null,
+      "targetType": null,
+      "value": null,
+      "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+    },
+    {
+      "targetId": null,
+      "targetType": null,
+      "value": null,
+      "name": "com.amazonaws.ecs.capability.docker-remote-api.1.21"
+    },
+    {
+      "targetId": null,
+      "targetType": null,
+      "value": null,
+      "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+    }
+  ],
+  "pidMode": null,
+  "requiresCompatibilities": [],
+  "networkMode": null,
+  "cpu": null,
+  "revision": 1,
+  "status": "ACTIVE",
+  "volumes": []
+}
 ```
 
 # License

@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="0.1-alpha"
+VERSION="0.1"
 LETSENCRYPT_PATH=/etc/letsencrypt
 
 function echo_err() {
