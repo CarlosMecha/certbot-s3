@@ -1,5 +1,12 @@
 
-# 0.1 / 2019-01-16
+0.2 / 2019-01-24
+================
 
-    - Initial release
+  * Add `sync` subcommand
+  * Update version and instructions
+
+0.1 / 2019-01-16
+================
+
+  * Initial release
 
