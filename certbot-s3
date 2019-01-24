@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="0.1"
+VERSION="0.2"
 LETSENCRYPT_PATH=/etc/letsencrypt
 
 function echo_err() {
@@ -64,6 +64,11 @@ function main() {
     [[ "$S3_PATH" == "" ]] && usage
 
     mkdir -p $LETSENCRYPT_PATH
+
+    if [[ "$1" == "sync" ]]; then {
+        s3_sync s3://$S3_BUCKET$S3_PATH $LETSENCRYPT_PATH
+        exit $?
+    } fi
 
     # Inspect arguments
     local arguments="$@"

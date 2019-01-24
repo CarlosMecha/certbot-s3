@@ -58,6 +58,8 @@ Environment variables:
 CLI arguments: All certbot [arguments](https://certbot.eff.org/docs/using.html#certbot-command-line-options) are supported. `--non-interactive` is
 added by default if not provided.
 
+Also `sync` command is added to copy certificates from S3 to local storage.
+
 *NOTE:* Any `-path` CLI argument might break the script.
 
 ## Certbot plugins
