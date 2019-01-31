@@ -33,18 +33,18 @@ Then, the script `start-webserver` that would start your server:
 ```bash
 #!/bin/bash
 
+function watch_certificates {
+    inotifywait -r -e create,modify,delete /etc/my-certs/ | while read; do {
+        webserver reload # killall -HUP webserver
+    } done
+}
+
 # Feching new certificates first
 aws sync s3://bucket/path-to-certs/ /etc/my-certs/
 
-function wait_until_change {
-    inotifywait -r -e create,modify /etc/my-certs/
-}
+watch_certificates &
 
-webserver start-in-background
-
-while wait_until_change; do {
-    webserver reload
-} done
+webserver start
 ```
 
 # Configuration

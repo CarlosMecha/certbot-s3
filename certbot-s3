@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="0.2"
+VERSION="0.3"
 LETSENCRYPT_PATH=/etc/letsencrypt
 
 function echo_err() {
@@ -10,7 +10,9 @@ function echo_err() {
 }
 
 function echo_ver() {
-    [[ "$VERBOSE" != "" ]] && echo $@
+    if [[ "$VERBOSE" != "" ]]; then {
+        echo $@
+    } fi
 }
 
 function usage() {
