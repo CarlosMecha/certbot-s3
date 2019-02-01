@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="0.3"
+VERSION="0.4"
 LETSENCRYPT_PATH=/etc/letsencrypt
 
 function echo_err() {
@@ -39,19 +39,40 @@ function assert_certbot() {
     } fi
 }
 
-function s3_sync {
-    echo_ver "Syncing S3 ($1 -> $2)"
-    aws s3 sync $1 $2
+function sync_to_s3 {
+    local s3location="s3://$S3_BUCKET$S3_PATH"
+    local links="$LETSENCRYPT_PATH/links.txt"
+    local expr=$(sed 's@\/@\\\/@g' <<< "'$LETSENCRYPT_PATH/")
+
+    echo_ver "Creating list of symlinks"
+    find /etc/letsencrypt/ -type l | xargs -I% sh -c "echo -n \'; readlink -fn %; echo \"' '%'\"" | sed -e "s/$expr/'/g" > "$links"
+
+    echo_ver "Syncing to S3 ($s3location -> $LETSENCRYPT_PATH)"
+    aws s3 --no-follow-symlinks sync "$LETSENCRYPT_PATH" "$s3location"
+}
+
+function sync_from_s3 {
+    local s3location="s3://$S3_BUCKET$S3_PATH"
+    local links="$LETSENCRYPT_PATH/links.txt"
+    local currDir=$(pwd)
+
+    echo_ver "Syncing from S3 ($s3location -> $LETSENCRYPT_PATH)"
+    aws s3 sync "$s3location" "$LETSENCRYPT_PATH"
+
+    echo_ver "Reading list of symlinks"
+    cd "$LETSENCRYPT_PATH"
+    xargs -I% sh -c "ln -s $LETSENCRYPT_PATH/%" < "$links"
+    cd "$currDir"
 }
 
 function run_certbot() {
 
-    s3_sync s3://$S3_BUCKET$S3_PATH $LETSENCRYPT_PATH
+    sync_from_s3
 
     echo_ver "certbot $@"
     certbot $@
 
-    s3_sync $LETSENCRYPT_PATH s3://$S3_BUCKET$S3_PATH
+    sync_to_s3
 }
 
 function main() {
@@ -62,14 +83,15 @@ function main() {
         usage
     } fi
 
-    [[ "$S3_BUCKET" == "" ]] && usage
-    [[ "$S3_PATH" == "" ]] && usage
+    if [[ "$S3_BUCKET" == "" ]] || [[ "$S3_PATH" == "" ]]; then {
+        usage
+    } fi
 
     mkdir -p $LETSENCRYPT_PATH
 
     if [[ "$1" == "sync" ]]; then {
-        s3_sync s3://$S3_BUCKET$S3_PATH $LETSENCRYPT_PATH
-        exit $?
+        sync_from_s3 $LETSENCRYPT_PATH
+        exit 0
     } fi
 
     # Inspect arguments

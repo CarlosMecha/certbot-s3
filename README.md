@@ -24,12 +24,24 @@ An easy way to keep your local certificates updated, you could run `aws sync s3:
 override the local certificates when a file in S3 changes (or adding missing ones). Then, you can reload the configuration of your webserver 
 (ex. `nginx reload`) to use them. Here's an example of how to configure your web server environment with cron:
 
-```
-0 * * * * aws sync s3://bucket/path-to-certs/ /etc/my-certs/
+*NOTE*: S3 does not support symbolic links, but certbot uses them in the `live/` folder. When the certbot files get synced to S3, a `links.txt`
+file is created that contains two columns, the first one correspond with the target and the second is the link name.
+
+1. Create a script to sync the certificates:
+```bash
+#!/bin/bash
+aws sync s3://bucket/path-to-certs/ /etc/my-certs/
+cd /etc/my-certs/
+xargs -I% sh -c 'ln -s /etc/my-certs/%' < links.txt
 ```
 
-Then, the script `start-webserver` that would start your server:
+2. Add to the crontab with a schedule:
+```bash
+# Every hour
+0 * * * * sync_certs
+```
 
+3. Then, the script `start-webserver` that would start your server:
 ```bash
 #!/bin/bash
 
@@ -40,11 +52,10 @@ function watch_certificates {
 }
 
 # Feching new certificates first
-aws sync s3://bucket/path-to-certs/ /etc/my-certs/
-
+sync_certs
 watch_certificates &
 
-webserver start
+webserver start-in-foreground
 ```
 
 # Configuration
